@@ -1,0 +1,10 @@
+# Ignore PNG files
+*.png
+
+# Ignore virtual environment folder (venv)
+venv/
+
+# Ignore Python temporary files
+*.pyc
+*.pyo
+__pycache__/

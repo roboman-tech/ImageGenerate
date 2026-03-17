@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CMCA Chatbot</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="container">
+    <h1>CMCA Chatbot</h1>
+
+    <!-- Login Form -->
+    <div id="login-form">
+      <h2>Login</h2>
+      <input type="email" id="login-email" placeholder="Email" required />
+      <input type="password" id="login-password" placeholder="Password" required />
+      <button onclick="login()">Login</button>  <!-- This is the login button -->
+      <button onclick="showRegister()">Go to Register</button>  <!-- This is the 'Go to Register' button -->
+    </div>
+
+    <!-- Register Form -->
+    <div id="register-form" style="display:none;">
+      <h2>Register</h2>
+      <input type="email" id="register-email" placeholder="Email" required />
+      <input type="password" id="register-password" placeholder="Password" required />
+      <button onclick="register()">Register</button>
+      <button onclick="showLogin()">Go to Login</button>
+    </div>
+
+    <!-- Chat Interface -->
+    <div id="chat-interface" style="display:none;">
+      <div id="chat-container">
+        <!-- Left Side: Image Display -->
+        <div id="image-container">
+          <!-- Placeholder for images in the chat -->
+        </div>
+
+        <!-- Right Side: Chat Box and Input -->
+        <div id="chat-box-container">
+          <div id="chat-box" class="chat-box"></div>
+          <input type="text" id="user-message" placeholder="Type a message..." />
+          <button id="send-button" onclick="sendMessage()">Send</button>
+          <button id="logout-button" onclick="logout()">Logout</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script> <!-- Ensure this is correctly linked -->
+</body>
+</html>

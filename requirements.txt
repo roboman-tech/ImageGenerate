@@ -1,0 +1,4 @@
+py -3.11 -m venv sdxl_env
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+pip install diffusers transformers accelerate safetensors matplotlib
+pip install fastapi uvicorn sqlalchemy pydantic email-validator transformers torch diffusers accelerate safetensors passlib[argon2] python-jose google-auth requests python-multipart

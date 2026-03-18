@@ -5,7 +5,7 @@ import uuid
 import threading
 import base64
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Optional
 
 import requests
@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import Column, Integer, String, create_engine
+from sqlalchemy import Column, Integer, String, Date, DateTime, Text, ForeignKey, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -55,6 +55,20 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     email = Column(String, unique=True, index=True)
     password = Column(String)
+
+
+class DiaryEntry(Base):
+    __tablename__ = "diary_entries"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False)
+    entry_date = Column(Date, index=True, nullable=False)
+    created_at = Column(DateTime, index=True, nullable=False, default=datetime.utcnow)
+
+    user_message = Column(Text, nullable=False)
+    assistant_reply = Column(Text, nullable=False)
+
+    image_prompt = Column(Text, nullable=True)
+    image_filename = Column(String, nullable=True)  # stored under generated_images
 
 
 Base.metadata.create_all(bind=engine)
@@ -139,6 +153,7 @@ class TokenResponse(BaseModel):
 class Message(BaseModel):
     content: str
     token: Optional[str] = None
+    entry_date: Optional[str] = None  # YYYY-MM-DD from frontend
 
 
 class ImagePayload(BaseModel):
@@ -158,6 +173,28 @@ class ChatResponse(BaseModel):
     image_description: Optional[str] = None
     image_prompt: Optional[str] = None
     negative_prompt: Optional[str] = None
+    entry_id: Optional[int] = None
+    entry_date: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class DiaryDatesResponse(BaseModel):
+    dates: list[str]
+
+
+class DiaryEntryOut(BaseModel):
+    id: int
+    role: str
+    content: str
+    created_at: str
+    entry_date: str
+    image: Optional[ImagePayload] = None
+    image_prompt: Optional[str] = None
+
+
+class DiaryDayResponse(BaseModel):
+    date: str
+    items: list[DiaryEntryOut]
 
 
 # ---------------- GOOGLE AUTH ----------------
@@ -247,7 +284,7 @@ def generate_image_from_text(prompt: str) -> str:
                 guidance_scale=7.5
             ).images[0]
 
-        # Save to disk (optional, keeps previous behavior)
+        # Save to disk
         image.save(save_path)
 
         # Also encode image to base64 so it can be returned directly
@@ -256,7 +293,86 @@ def generate_image_from_text(prompt: str) -> str:
         buffer.seek(0)
         image_bytes = buffer.getvalue()
 
-    return base64.b64encode(image_bytes).decode("utf-8")
+    base64_png = base64.b64encode(image_bytes).decode("utf-8")
+    width, height = image.size
+    return base64_png, filename, width, height
+
+
+def image_url_for_filename(filename: Optional[str]) -> Optional[str]:
+    if not filename:
+        return None
+    return f"/images/{filename}"
+
+
+@app.get("/diary/dates", response_model=DiaryDatesResponse)
+def diary_dates(token: str, db: Session = Depends(get_db)):
+    user = get_current_user(token, db)
+    rows = (
+        db.query(DiaryEntry.entry_date)
+        .filter(DiaryEntry.user_id == user.id)
+        .distinct()
+        .order_by(DiaryEntry.entry_date.desc())
+        .all()
+    )
+    dates = [r[0].isoformat() for r in rows]
+    return DiaryDatesResponse(dates=dates)
+
+
+@app.get("/diary/{entry_date}", response_model=DiaryDayResponse)
+def diary_day(entry_date: str, token: str, db: Session = Depends(get_db)):
+    user = get_current_user(token, db)
+    try:
+        d = date.fromisoformat(entry_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
+
+    entries = (
+        db.query(DiaryEntry)
+        .filter(DiaryEntry.user_id == user.id, DiaryEntry.entry_date == d)
+        .order_by(DiaryEntry.created_at.asc())
+        .all()
+    )
+
+    items: list[DiaryEntryOut] = []
+    for e in entries:
+        # user message
+        items.append(
+            DiaryEntryOut(
+                id=e.id,
+                role="user",
+                content=e.user_message,
+                created_at=e.created_at.isoformat(),
+                entry_date=e.entry_date.isoformat(),
+                image=None,
+                image_prompt=None,
+            )
+        )
+        # assistant reply + optional image
+        img = None
+        if e.image_filename:
+            img = ImagePayload(
+                description=e.assistant_reply,
+                prompt=e.image_prompt,
+                negative_prompt=None,
+                base64=None,
+                url=image_url_for_filename(e.image_filename),
+                mime_type="image/png",
+                width=None,
+                height=None,
+            )
+        items.append(
+            DiaryEntryOut(
+                id=e.id,
+                role="assistant",
+                content=e.assistant_reply,
+                created_at=e.created_at.isoformat(),
+                entry_date=e.entry_date.isoformat(),
+                image=img,
+                image_prompt=e.image_prompt,
+            )
+        )
+
+    return DiaryDayResponse(date=d.isoformat(), items=items)
 
 
 def generate_reply(message: str, use_deepseek: bool = False, client_id: str = None) -> str:
@@ -413,24 +529,46 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
 def chat(message: Message, db: Session = Depends(get_db)):
     print(f"Received chat message: {message.content} with token: {message.token}")
     token = message.token
-    #user = get_current_user(token, db)
-    #client_id = user.email
-    client_id = "a@a.mail"
+    user = get_current_user(token, db)
+    client_id = user.email
 
     reply = generate_reply(message.content, use_deepseek=True, client_id=client_id)
 
     image_prompt = build_image_prompt(reply)
-    image_data = generate_image_from_text(image_prompt)
+    image_data, image_filename, width, height = generate_image_from_text(image_prompt)
+
+    # Use the selected diary date from the client if provided
+    try:
+        selected_d = (
+            date.fromisoformat(message.entry_date)
+            if message.entry_date
+            else datetime.utcnow().date()
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid entry_date. Use YYYY-MM-DD.")
+
+    entry = DiaryEntry(
+        user_id=user.id,
+        entry_date=selected_d,
+        created_at=datetime.utcnow(),
+        user_message=message.content,
+        assistant_reply=reply,
+        image_prompt=image_prompt,
+        image_filename=image_filename,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
 
     image_payload = ImagePayload(
         description=reply,
         prompt=image_prompt,
         negative_prompt=None,
         base64=image_data,
-        url=None,
+        url=image_url_for_filename(image_filename),
         mime_type="image/png",
-        width=None,
-        height=None,
+        width=width,
+        height=height,
     )
 
     return ChatResponse(
@@ -439,6 +577,9 @@ def chat(message: Message, db: Session = Depends(get_db)):
         image_description=reply,
         image_prompt=image_prompt,
         negative_prompt=None,
+        entry_id=entry.id,
+        entry_date=entry.entry_date.isoformat(),
+        created_at=entry.created_at.isoformat(),
     )
 
 

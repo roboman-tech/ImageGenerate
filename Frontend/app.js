@@ -54,7 +54,7 @@ async function login() {
   if (response.ok) {
     const data = await response.json();
     authToken = data.access_token;  // Store JWT token
-    alert('Login successful!, auth token: ' + authToken);
+    alert('Login successful!');
     showChat();
   } else {
     const error = await response.json();

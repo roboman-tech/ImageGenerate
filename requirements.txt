@@ -1,4 +1,34 @@
-py -3.11 -m venv sdxl_env
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
-pip install diffusers transformers accelerate safetensors matplotlib
-pip install fastapi uvicorn sqlalchemy pydantic email-validator transformers torch diffusers accelerate safetensors passlib[argon2] python-jose google-auth requests python-multipart
+# ImageGeneration Backend
+# Python 3.10+
+
+# PyTorch (install separately for CUDA: pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126)
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# Diffusion
+diffusers>=0.25.0
+transformers>=4.35.0
+accelerate>=0.24.0
+safetensors>=0.4.0
+
+# API
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# Database
+sqlalchemy>=2.0.0
+
+# Auth & validation
+pydantic>=2.0.0
+email-validator>=2.0.0
+passlib[argon2]>=1.7.0
+python-jose[cryptography]>=3.3.0
+google-auth>=2.0.0
+
+# HTTP
+requests>=2.31.0
+python-multipart>=0.0.6
+
+# Optional: load .env
+python-dotenv>=1.0.0
